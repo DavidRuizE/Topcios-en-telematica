@@ -1,0 +1,76 @@
+const express = require("express");
+const path = require("path");
+const grpc = require("@grpc/grpc-js");
+const amqp = require("amqplib/callback_api");
+const protoLoader = require("@grpc/proto-loader");
+const { channel } = require("diagnostics_channel");
+
+const app = express();
+
+const PORT = 80;
+
+const serviceProtoPATH = path.resolve(__dirname, "../protobuf/service.proto");
+const serviceServicePORT = 50051;
+const servicePackageDefinition = protoLoader.loadSync(serviceProtoPATH);
+const serviceService = grpc.loadPackageDefinition(
+  servicePackageDefinition
+).FileService;
+const serviceClient = new serviceService(
+  `52.44.176.235:${serviceServicePORT}`,
+  grpc.credentials.createInsecure()
+);
+
+function sendToQueue(message) {
+  amqp.connect("amqp://user:password@50.17.117.231", (error0, connection) => {
+    if (error0) {
+      console.error("Conexión no exitosa, MOM", error0);
+      return;
+    }
+    connection.createChannel((error1, channel) => {
+      if (error1) {
+        console.error("No se pudo crear un canal", error1);
+        return;
+      }
+      const queue = "my_queue";
+      channel.assertQueue(queue, {
+        durable: true,
+      });
+      channel.sendToQueue(queue, Buffer.from(message));
+      console.log(" [x] Sent %s", message);
+    });
+  });
+}
+
+app.get("/list", (req, res) => {
+  serviceClient.ListFiles({}, (error, response) => {
+    if (error) {
+      console.error("Error al listar los archivos", error);
+      sendToQueue("List");
+      res
+        .status(500)
+        .send("fallo gRPC, Accediendo cola a RabbitMQ");
+      return;
+    }
+    res.json(response.filenames);
+  });
+});
+
+app.get("/search", (req, res) => {
+  serviceClient.SearchFiles({ name: req.query.name }, (error, response) => {
+    if (error) {
+      console.error("Error al buscar el archivo", error);
+      let message = "Search" + req.query.name;
+      console.log(message);
+      sendToQueue(message);
+      res
+        .status(500)
+        .send("fallo gRPC, Accediendo cola a RabbitMQ");
+      return;
+    }
+    res.json(response.SearchResponse);
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`Corriendo en el puerto: ${PORT}`);
+});
