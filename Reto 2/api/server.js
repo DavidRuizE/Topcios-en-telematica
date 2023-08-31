@@ -59,7 +59,7 @@ app.get("/search", (req, res) => {
   serviceClient.SearchFiles({ name: req.query.name }, (error, response) => {
     if (error) {
       console.error("Error al buscar el archivo", error);
-      let message = "Search" + req.query.name;
+      let message = "Search/" + req.query.name;
       console.log(message);
       sendToQueue(message);
       res
@@ -67,7 +67,7 @@ app.get("/search", (req, res) => {
         .send("fallo gRPC, Accediendo cola a RabbitMQ");
       return;
     }
-    res.json(response.SearchResponse);
+    res.json(response.searchResponse);
   });
 });
 
